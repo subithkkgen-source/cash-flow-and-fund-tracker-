@@ -7,13 +7,39 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="CF Ledger">
-<meta name="description" content="Smart Cash Flow Management Platform — manage bank accounts, classify transactions, track fund requirements, and generate cash flow reports.">
+<meta name="description" content="Smart Cash Flow & Fund Requirement Management Platform">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>CashFlow Ledger</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+//  SUPABASE CONFIG  —  Replace these two lines with your own
+//  Project URL and anon key from supabase.com → Settings → API
+// ══════════════════════════════════════════════════════════════
+const SUPABASE_URL  = 'https://mauawovsmzloqggiwxvw.supabase.co/rest/v1/';    // e.g. https://abcxyz.supabase.co
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hdWF3b3ZzbXpsb3FnZ2l3eHZ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNzYyNTEsImV4cCI6MjA5Nzg1MjI1MX0.cwsV50IFFjOvOSmeiDAfOTbRcqGb98bU7fNjt5RjEFE'; // starts with "eyJ..."
+
+const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+  realtime: { params: { eventsPerSecond: 10 } }
+});
+
+// Current session / user
+let CURRENT_USER = null;   // Supabase auth user object
+let CURRENT_ROLE = null;   // 'admin' | 'viewer'
+let _rtChannels  = [];     // active real-time subscriptions
+
+// ── Config guard — show warning if placeholder not replaced ──
+window.addEventListener('DOMContentLoaded', ()=>{
+  if(SUPABASE_URL === 'YOUR_SUPABASE_URL'){
+    document.getElementById('config-warning').style.display='flex';
+  }
+});
+</script>
 <style>
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
 
@@ -580,7 +606,68 @@ body.frms-dark #pg-frms .m-val{color:#F9FAFB;}
   .page{display:block!important;}
 }
 
-/* ── RESPONSIVE ────────────────────────────────────────── */
+/* ── SUPABASE AUTH SCREENS ──────────────────────────────── */
+#auth-screen{
+  position:fixed;inset:0;background:var(--bg);z-index:9000;
+  display:flex;align-items:center;justify-content:center;
+}
+.auth-card{
+  background:#fff;border:1px solid var(--border);border-radius:var(--r16);
+  width:400px;max-width:96vw;padding:36px;box-shadow:var(--shadow-pop);
+  animation:popIn .2s ease;
+}
+.auth-logo{text-align:center;margin-bottom:24px;}
+.auth-logo-mark{width:52px;height:52px;border-radius:12px;background:var(--orange);
+  display:inline-flex;align-items:center;justify-content:center;
+  font-size:24px;font-weight:700;color:#fff;margin-bottom:10px;}
+.auth-logo h1{font-size:20px;font-weight:700;color:var(--text);}
+.auth-logo p{font-size:12px;color:var(--text3);margin-top:3px;}
+.auth-error{background:var(--red-l);border:1px solid #FECACA;border-radius:var(--r6);
+  padding:9px 12px;font-size:12px;color:var(--red);margin-bottom:12px;display:none;}
+.auth-btn{width:100%;padding:11px;background:var(--orange);color:#fff;border:none;
+  border-radius:var(--r6);font-size:14px;font-weight:600;cursor:pointer;
+  font-family:var(--font);transition:background .15s;margin-top:6px;}
+.auth-btn:hover{background:var(--orange-d);}
+.auth-btn:disabled{background:#D1D5DB;cursor:not-allowed;}
+.auth-divider{text-align:center;font-size:11px;color:var(--text3);margin:14px 0;}
+.auth-link{color:var(--orange);font-size:12px;cursor:pointer;font-weight:500;}
+.auth-link:hover{text-decoration:underline;}
+
+/* User pill in topbar */
+#user-pill{
+  display:flex;align-items:center;gap:8px;padding:5px 10px 5px 6px;
+  background:var(--bg3);border:1px solid var(--border);border-radius:20px;
+  cursor:pointer;font-size:12px;
+}
+#user-pill:hover{background:var(--bg4);}
+.user-avatar{width:26px;height:26px;border-radius:50%;background:var(--orange);
+  display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;}
+.role-chip-admin{background:#FFF4EE;color:var(--orange);border:1px solid var(--orange-b);
+  padding:1px 7px;border-radius:10px;font-size:9px;font-weight:700;text-transform:uppercase;}
+.role-chip-viewer{background:var(--blue-l);color:var(--blue);border:1px solid var(--blue-b);
+  padding:1px 7px;border-radius:10px;font-size:9px;font-weight:700;text-transform:uppercase;}
+
+/* Config warning banner */
+#config-warning{
+  position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;
+  display:none;align-items:center;justify-content:center;
+}
+.cfg-box{background:#fff;border-radius:var(--r12);padding:32px;max-width:600px;
+  width:96%;box-shadow:var(--shadow-pop);}
+.cfg-box h2{font-size:18px;font-weight:700;margin-bottom:12px;color:var(--orange);}
+.cfg-box pre{background:#1A1F36;color:#E5E7EB;padding:12px;border-radius:8px;
+  font-size:11px;font-family:var(--mono);white-space:pre-wrap;word-break:break-all;
+  margin:10px 0;}
+
+/* Real-time sync indicator */
+#sync-dot{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;
+  animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+#sync-dot.disconnected{background:var(--red);animation:none;}
+
+/* Viewer-mode lock overlay on restricted buttons */
+.viewer-hidden{display:none!important;}
+
 @media (max-width:900px){
   #sidebar{width:54px;}
   .logo-name,.logo-tag,.nav-group,.nav-item span{display:none;}
@@ -597,6 +684,83 @@ body.frms-dark #pg-frms .m-val{color:#F9FAFB;}
 </style>
 </head>
 <body>
+
+
+<!-- ════════════════════════════════════════════════════════
+     CONFIG WARNING (shown when Supabase URL not configured)
+═════════════════════════════════════════════════════════ -->
+<div id="config-warning">
+  <div class="cfg-box">
+    <h2>⚙ Supabase Not Configured</h2>
+    <p style="font-size:13px;color:#4A5568;margin-bottom:12px;">
+      You need to add your Supabase project URL and API key to the app before it can connect to the shared database.
+      Open <code>index.html</code> in a text editor and replace these two lines near the top:
+    </p>
+    <pre>const SUPABASE_URL  = 'YOUR_SUPABASE_URL';
+const SUPABASE_ANON = 'YOUR_SUPABASE_ANON_KEY';</pre>
+    <p style="font-size:12px;color:#6B7280;">
+      Get these values from your Supabase project → Settings → API.<br>
+      See <strong>SETUP-GUIDE.html</strong> for step-by-step instructions.
+    </p>
+    <button onclick="document.getElementById('config-warning').style.display='none'"
+      style="margin-top:16px;padding:9px 20px;background:#E8560A;color:#fff;border:none;
+      border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">
+      Dismiss (use in offline mode)
+    </button>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════
+     AUTH SCREEN (Login / Reset password)
+═════════════════════════════════════════════════════════ -->
+<div id="auth-screen">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="auth-logo-mark">₹</div>
+      <h1>CashFlow Ledger</h1>
+      <p>Smart Cash Flow &amp; Fund Management</p>
+    </div>
+    <div id="auth-error" class="auth-error"></div>
+
+    <!-- Login form -->
+    <div id="auth-login-form">
+      <div style="margin-bottom:10px;">
+        <div class="lbl">Email Address</div>
+        <input class="inp" id="auth-email" type="email" placeholder="you@company.com"
+          onkeydown="if(event.key==='Enter') authLogin()">
+      </div>
+      <div style="margin-bottom:14px;">
+        <div class="lbl" style="display:flex;justify-content:space-between;">
+          Password
+          <span class="auth-link" onclick="authShowReset()">Forgot password?</span>
+        </div>
+        <input class="inp" id="auth-password" type="password" placeholder="••••••••"
+          onkeydown="if(event.key==='Enter') authLogin()">
+      </div>
+      <button class="auth-btn" id="auth-login-btn" onclick="authLogin()">Sign In</button>
+    </div>
+
+    <!-- Reset form -->
+    <div id="auth-reset-form" style="display:none;">
+      <p style="font-size:13px;color:#4A5568;margin-bottom:12px;">
+        Enter your email and we'll send a reset link.
+      </p>
+      <div style="margin-bottom:12px;">
+        <div class="lbl">Email Address</div>
+        <input class="inp" id="auth-reset-email" type="email" placeholder="you@company.com">
+      </div>
+      <button class="auth-btn" onclick="authSendReset()">Send Reset Email</button>
+      <div class="auth-divider">—</div>
+      <div style="text-align:center;">
+        <span class="auth-link" onclick="authShowLogin()">← Back to Sign In</span>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;text-align:center;font-size:11px;color:var(--text3);">
+      <span id="sync-status-auth">Connecting to database…</span>
+    </div>
+  </div>
+</div>
 
 <!-- SIDEBAR -->
 <nav id="sidebar">
@@ -670,12 +834,18 @@ body.frms-dark #pg-frms .m-val{color:#F9FAFB;}
     <span>Combined Report</span>
   </div>
 
+  <div class="nav-group admin-only-nav">Admin</div>
+  <div class="nav-item admin-only-nav" onclick="nav('usermgmt')" id="nav-usermgmt">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="5" r="3"/><path d="M1 13c0-2.8 2.2-5 5-5"/><circle cx="12" cy="10" r="2.5"/><path d="M12 8v-.5M12 12v.5M10.1 9.1l-.35.35M14.25 12.25l-.35.35M9.5 10.5H9M15 10.5h-.5M10.1 11.9l-.35-.35M14.25 8.75l-.35-.35"/></svg>
+    <span>User Management</span>
+  </div>
+
   <div class="sidebar-footer">
     <div style="display:flex;align-items:center;gap:9px;">
-      <div style="width:30px;height:30px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0;">FT</div>
-      <div>
-        <div style="font-size:12px;font-weight:500;color:var(--text)">Finance Team</div>
-        <div style="font-size:10px;color:var(--text3)">Admin</div>
+      <div id="sidebar-user-avatar" style="width:30px;height:30px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0;">?</div>
+      <div style="flex:1;min-width:0;">
+        <div id="sidebar-user-name" style="font-size:12px;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Not signed in</div>
+        <div id="sidebar-user-role" style="font-size:10px;color:var(--text3);">—</div>
       </div>
     </div>
   </div>
@@ -686,6 +856,9 @@ body.frms-dark #pg-frms .m-val{color:#F9FAFB;}
 <div id="topbar">
   <span id="page-title" style="font-size:14px;font-weight:600;color:var(--text);flex:1;"></span>
   <span class="topbar-date" id="topbar-date"></span>
+  <!-- Sync indicator -->
+  <span id="sync-dot" title="Real-time connected"></span>
+  <span id="sync-label" style="font-size:10px;color:var(--text3)">Live</span>
   <button class="btn btn-outline btn-sm no-print" onclick="nav('import')" style="gap:5px;">
     <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 1v9M5 7l3 3 3-3"/><path d="M2 11v2a1 1 0 001 1h10a1 1 0 001-1v-2"/></svg>
     Import
@@ -694,6 +867,31 @@ body.frms-dark #pg-frms .m-val{color:#F9FAFB;}
     <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1,13 4,8 7,10 10,5 14,8"/><path d="M10 5h4v4"/></svg>
     Reports
   </button>
+  <!-- User pill -->
+  <div id="user-pill" onclick="toggleUserMenu()">
+    <div class="user-avatar" id="user-avatar">?</div>
+    <span id="user-name-label" style="font-size:12px;font-weight:500;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+    <span id="user-role-chip"></span>
+  </div>
+  <!-- User dropdown -->
+  <div id="user-menu" style="display:none;position:absolute;top:56px;right:18px;
+    background:#fff;border:1px solid var(--border);border-radius:var(--r8);
+    box-shadow:var(--shadow-md);min-width:200px;z-index:500;padding:6px 0;">
+    <div style="padding:10px 14px;border-bottom:1px solid var(--border);">
+      <div style="font-size:12px;font-weight:600;" id="user-menu-name"></div>
+      <div style="font-size:11px;color:var(--text3);" id="user-menu-email"></div>
+    </div>
+    <div id="admin-only-menu" style="padding:4px 0;">
+      <div onclick="nav('usermgmt');toggleUserMenu()" style="padding:8px 14px;font-size:12px;cursor:pointer;color:var(--text2);" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
+        👥 Manage Users
+      </div>
+    </div>
+    <div style="padding:4px 0;border-top:1px solid var(--border);">
+      <div onclick="authSignOut()" style="padding:8px 14px;font-size:12px;cursor:pointer;color:var(--red);" onmouseover="this.style.background='var(--red-l)'" onmouseout="this.style.background=''">
+        ⎋ Sign Out
+      </div>
+    </div>
+  </div>
 </div>
 <div id="content">
 
@@ -1340,7 +1538,104 @@ body.frms-dark #pg-frms .m-val{color:#F9FAFB;}
 
 </div><!-- /pg-sanctions -->
 
+<!-- ====== USER MANAGEMENT (Admin only) ====== -->
+<div class="page" id="pg-usermgmt">
+<div class="page-hd">
+  <div>
+    <div class="page-hd-title">User Management</div>
+    <div class="page-hd-sub">Invite team members and manage their roles</div>
+  </div>
+  <div class="ml-auto flex gap8">
+    <button class="btn btn-primary btn-sm" onclick="openModal('modal-invite-user')">+ Invite User</button>
+  </div>
+</div>
+
+<div class="g2 mb14">
+  <div class="card">
+    <div class="card-title">Team Members</div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Joined</th><th>Actions</th></tr></thead>
+        <tbody id="usermgmt-body">
+          <tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text3)">Loading users…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Role Permissions</div>
+    <table class="tbl">
+      <thead><tr><th>Permission</th><th>Admin</th><th>Viewer</th></tr></thead>
+      <tbody>
+        <tr><td>View all data</td><td>✅</td><td>✅</td></tr>
+        <tr><td>Import bank statements</td><td>✅</td><td>❌</td></tr>
+        <tr><td>Add / edit transactions</td><td>✅</td><td>❌</td></tr>
+        <tr><td>Delete transactions</td><td>✅</td><td>❌</td></tr>
+        <tr><td>Classify / edit CF heads</td><td>✅</td><td>❌</td></tr>
+        <tr><td>Manage sanctions</td><td>✅</td><td>❌</td></tr>
+        <tr><td>Add / edit fund requests</td><td>✅</td><td>❌</td></tr>
+        <tr><td>Upload CF Excel</td><td>✅</td><td>❌</td></tr>
+        <tr><td>Export data</td><td>✅</td><td>✅</td></tr>
+        <tr><td>Invite / manage users</td><td>✅</td><td>❌</td></tr>
+      </tbody>
+    </table>
+    <div class="alert alert-info" style="margin-top:12px;">
+      <span class="a-icon">ℹ</span>
+      <div>Role changes take effect immediately. The user does not need to log out.</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Activity Log <span style="font-size:10px;color:var(--text3);font-weight:400">(last 100 actions)</span></div>
+  <div class="tbl-wrap" style="max-height:320px;overflow-y:auto;">
+    <table class="tbl">
+      <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Module</th><th>Detail</th></tr></thead>
+      <tbody id="activity-log-body">
+        <tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text3)">No activity yet</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+</div>
+
+<!-- Invite User Modal -->
+<div class="modal-bd" id="modal-invite-user">
+  <div class="modal">
+    <div class="modal-title">Invite Team Member
+      <button class="modal-close" onclick="closeModal('modal-invite-user')">✕</button>
+    </div>
+    <div style="padding:20px;">
+      <div class="alert alert-info mb12">
+        <span class="a-icon">ℹ</span>
+        <div>The user will receive an email invitation to create their password and join your team.</div>
+      </div>
+      <div class="form-row">
+        <div><div class="lbl req">Email Address</div>
+          <input class="inp" id="invite-email" type="email" placeholder="colleague@company.com"></div>
+      </div>
+      <div class="form-row">
+        <div><div class="lbl req">Full Name</div>
+          <input class="inp" id="invite-name" placeholder="e.g. Priya Sharma"></div>
+      </div>
+      <div class="form-row">
+        <div><div class="lbl req">Role</div>
+          <select class="inp" id="invite-role">
+            <option value="viewer">Viewer (read-only)</option>
+            <option value="admin">Admin (full access)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div style="padding:14px 20px 20px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border);">
+      <button class="btn btn-outline" onclick="closeModal('modal-invite-user')">Cancel</button>
+      <button class="btn btn-primary" onclick="inviteUser()">Send Invitation</button>
+    </div>
+  </div>
+</div>
+
 </div><!-- /content -->
+
 </div><!-- /main -->
 
 <!-- TOAST -->
@@ -1796,7 +2091,8 @@ function nav(page){
     dashboard:'Dashboard',accounts:'Bank Accounts',import:'Import Statement',
     ledger:'Account Ledger',classify:'Classify Entries',cfheads:'CF Heads Setup',
     cfstmt:'CF Statement',cashflow:'Cash Flow Report',combined:'Combined Report',
-    sanctions:'Sanction Balance',frms:'Fund Requirement Management'
+    sanctions:'Sanction Balance',frms:'Fund Requirement Management',
+    usermgmt:'User Management'
   }[page]||page;
   if(page==='dashboard') renderDashboard();
   if(page==='accounts') renderAccountsGrid();
@@ -1809,6 +2105,7 @@ function nav(page){
   if(page==='import') renderImportAccounts();
   if(page==='sanctions') renderSanctions();
   if(page==='frms') frmsRender();
+  if(page==='usermgmt') renderUserMgmt();
   updateBadges();
 }
 
@@ -4310,47 +4607,441 @@ function exportCFStmtExcel(){
   toast('CF Statement exported','ok');
 }
 // ==================== STORAGE ====================
-function saveData(){
-  try{
-    localStorage.setItem('cfl_accounts', JSON.stringify(APP.accounts));
-    localStorage.setItem('cfl_transactions', JSON.stringify(APP.transactions));
-    localStorage.setItem('cfl_cfheads', JSON.stringify(APP.cfHeads));
-    localStorage.setItem('cfl_subcats', JSON.stringify(APP.subCategoryMap));
-    localStorage.setItem('cfl_cfdata', JSON.stringify(APP.cfData));
-    localStorage.setItem('cfl_sanctions', JSON.stringify(APP.sanctions));
-    localStorage.setItem('cfl_setoffs', JSON.stringify(APP.setoffs));
-    localStorage.setItem('cfl_frms', JSON.stringify(APP.frmsRequests));
-    localStorage.setItem('cfl_frms_audit', JSON.stringify(APP.frmsAuditLog));
-    localStorage.setItem('cfl_ids', JSON.stringify({t:APP.nextTxnId,a:APP.nextAccId,h:APP.nextHeadId,s:APP.nextSncId,so:APP.nextSetoffId,fr:APP.nextFrmsId}));
-  }catch(e){console.warn('Storage error',e);}
+// ══════════════════════════════════════════════════════════════
+//  SUPABASE DATA LAYER  —  replaces localStorage saveData/loadData
+//  Tables: cf_accounts, cf_transactions, cf_heads, cf_subcats,
+//          cf_sanctions, cf_setoffs, cf_frms, cf_audit, cf_users
+// ══════════════════════════════════════════════════════════════
+
+// ── Table name constants ──────────────────────────────────────
+const T = {
+  accounts:     'cf_accounts',
+  transactions: 'cf_transactions',
+  cfHeads:      'cf_heads',
+  subcats:      'cf_subcats',
+  cfData:       'cf_cf_data',
+  sanctions:    'cf_sanctions',
+  setoffs:      'cf_setoffs',
+  frms:         'cf_frms',
+  audit:        'cf_audit',
+  users:        'cf_users',
+};
+
+// ── Org ID — all rows are scoped to one shared org ───────────
+const ORG_ID = 'default_org';
+
+// ── Generic helpers ───────────────────────────────────────────
+async function dbGet(table){
+  const {data,error} = await _sb.from(table).select('*').eq('org_id',ORG_ID).order('created_at',{ascending:true});
+  if(error) console.error('DB get error',table,error);
+  return data||[];
+}
+async function dbUpsert(table, rows){
+  const payload = (Array.isArray(rows)?rows:[rows]).map(r=>({...r,org_id:ORG_ID}));
+  const {error} = await _sb.from(table).upsert(payload,{onConflict:'id'});
+  if(error) console.error('DB upsert error',table,error);
+}
+async function dbDelete(table, id){
+  const {error} = await _sb.from(table).delete().eq('id',id).eq('org_id',ORG_ID);
+  if(error) console.error('DB delete error',table,error);
+}
+async function dbReplaceAll(table, rows){
+  // Delete all then insert — for arrays that are fully replaced (cfHeads, subcats, cfData)
+  await _sb.from(table).delete().eq('org_id',ORG_ID);
+  if(rows && rows.length){
+    await dbUpsert(table, rows);
+  }
 }
 
-function loadData(){
-  try{
-    const acc = localStorage.getItem('cfl_accounts');
-    if(acc) APP.accounts = JSON.parse(acc);
-    const txn = localStorage.getItem('cfl_transactions');
-    if(txn) APP.transactions = JSON.parse(txn);
-    const heads = localStorage.getItem('cfl_cfheads');
-    if(heads) APP.cfHeads = JSON.parse(heads);
-    const subcats = localStorage.getItem('cfl_subcats');
-    if(subcats) APP.subCategoryMap = JSON.parse(subcats);
-    const cfdata = localStorage.getItem('cfl_cfdata');
-    if(cfdata) APP.cfData = JSON.parse(cfdata);
-    const snc = localStorage.getItem('cfl_sanctions');
-    if(snc) APP.sanctions = JSON.parse(snc);
-    const so = localStorage.getItem('cfl_setoffs');
-    if(so) APP.setoffs = JSON.parse(so);
-    const frms = localStorage.getItem('cfl_frms');
-    if(frms) APP.frmsRequests = JSON.parse(frms);
-    const frmsAudit = localStorage.getItem('cfl_frms_audit');
-    if(frmsAudit) APP.frmsAuditLog = JSON.parse(frmsAudit);
-    const ids = localStorage.getItem('cfl_ids');
-    if(ids){const p=JSON.parse(ids);APP.nextTxnId=p.t||1;APP.nextAccId=p.a||1;APP.nextHeadId=p.h||1;APP.nextSncId=p.s||1;APP.nextSetoffId=p.so||1;APP.nextFrmsId=p.fr||1;}
-  }catch(e){console.warn('Load error',e);}
-  if(!APP.cfHeads.length) APP.cfHeads = DEFAULT_CF_HEADS.map(h=>({...h}));
-  APP.nextHeadId = Math.max(APP.nextHeadId, APP.cfHeads.length+1);
+// ── Activity log helper ───────────────────────────────────────
+async function logActivity(module, action, detail=''){
+  if(!CURRENT_USER) return;
+  const entry = {
+    id: 'al_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
+    org_id: ORG_ID,
+    user_id: CURRENT_USER.id,
+    user_email: CURRENT_USER.email,
+    user_name: CURRENT_USER.user_metadata?.full_name||CURRENT_USER.email,
+    module, action, detail,
+    created_at: new Date().toISOString(),
+  };
+  await _sb.from(T.audit).insert(entry);
 }
+
+// ── SAVE individual items (called from existing save points) ──
+// These are thin wrappers so the rest of the app barely changes
+
+async function saveAccount(acc){
+  await dbUpsert(T.accounts,[acc]);
+  await logActivity('Accounts','save',acc.name);
+}
+async function deleteAccount_db(id){
+  await dbDelete(T.accounts,id);
+  await logActivity('Accounts','delete',id);
+}
+async function saveTxn(txn){
+  await dbUpsert(T.transactions,[txn]);
+}
+async function saveTxnBatch(txns){
+  if(!txns.length) return;
+  await dbUpsert(T.transactions,txns);
+  await logActivity('Ledger','import_batch',`${txns.length} transactions`);
+}
+async function deleteTxn_db(id){
+  await dbDelete(T.transactions,id);
+  await logActivity('Ledger','delete',id);
+}
+async function saveCFHeads(){
+  // cfHeads array is replaced wholesale since it's small
+  const rows = APP.cfHeads.map(h=>({...h,id:h.id,org_id:ORG_ID}));
+  await _sb.from(T.cfHeads).delete().eq('org_id',ORG_ID);
+  if(rows.length) await _sb.from(T.cfHeads).insert(rows);
+}
+async function saveSubCats(){
+  const rows = Object.entries(APP.subCategoryMap).map(([headId,cats])=>({
+    id:'sc_'+headId, head_id:headId, categories:cats, org_id:ORG_ID
+  }));
+  await _sb.from(T.subcats).delete().eq('org_id',ORG_ID);
+  if(rows.length) await _sb.from(T.subcats).upsert(rows);
+}
+async function saveSanction(snc){
+  await dbUpsert(T.sanctions,[snc]);
+  await logActivity('Sanctions','save',snc.code||snc.name);
+}
+async function deleteSanction_db(id){
+  await dbDelete(T.sanctions,id);
+}
+async function saveSetoff(so){
+  await dbUpsert(T.setoffs,[so]);
+  await logActivity('Sanctions','setoff',so.sanctionId);
+}
+async function deleteSetoff_db(id){
+  await dbDelete(T.setoffs,id);
+}
+async function saveFRMS(req){
+  await dbUpsert(T.frms,[req]);
+  await logActivity('FRMS', req.id.startsWith('fr')&&APP.frmsRequests.find(r=>r.id===req.id)?'update':'create', req.title);
+}
+async function deleteFRMS_db(id){
+  await dbDelete(T.frms,id);
+  await logActivity('FRMS','delete',id);
+}
+async function saveCFData(){
+  if(!APP.cfData) return;
+  const row = {id:'cfdata_main', org_id:ORG_ID, data:JSON.stringify(APP.cfData)};
+  await _sb.from(T.cfData).upsert(row,{onConflict:'id'});
+}
+async function saveFRMSAudit(entry){
+  await _sb.from(T.audit).insert({...entry, org_id:ORG_ID, module:'FRMS', action:'inline_edit'});
+}
+
+// ── Legacy saveData shim (still called in many places) ───────
+// Now a no-op — each module saves its own data immediately
+function saveData(){
+  // Supabase: data saved inline per operation. Nothing to do here.
+}
+
+// ── Load ALL data on startup ──────────────────────────────────
+async function loadData(){
+  try{
+    setSyncStatus('loading');
+    const [accs,txns,heads,subcats,cfDataRow,sncs,setoffs,frmsRows,auditRows] = await Promise.all([
+      dbGet(T.accounts),
+      dbGet(T.transactions),
+      dbGet(T.cfHeads),
+      _sb.from(T.subcats).select('*').eq('org_id',ORG_ID),
+      _sb.from(T.cfData).select('*').eq('id','cfdata_main').single(),
+      dbGet(T.sanctions),
+      dbGet(T.setoffs),
+      dbGet(T.frms),
+      _sb.from(T.audit).select('*').eq('org_id',ORG_ID).order('created_at',{ascending:false}).limit(100),
+    ]);
+    APP.accounts     = accs;
+    APP.transactions = txns;
+    APP.cfHeads      = heads.length ? heads : DEFAULT_CF_HEADS.map(h=>({...h}));
+    // Re-populate subCategoryMap
+    APP.subCategoryMap = {};
+    (subcats.data||[]).forEach(r=>{ APP.subCategoryMap[r.head_id]=r.categories||[]; });
+    // CF Data
+    if(cfDataRow.data?.data){
+      try{ APP.cfData = JSON.parse(cfDataRow.data.data); }catch(e){}
+    }
+    APP.sanctions    = sncs;
+    APP.setoffs      = setoffs;
+    APP.frmsRequests = frmsRows;
+    APP.frmsAuditLog = (auditRows.data||[]).filter(a=>a.module==='FRMS');
+    // IDs — derive from data
+    const maxId = arr => arr.reduce((m,r)=>{ const n=parseInt(String(r.id||'').replace(/\D/g,''))||0; return n>m?n:m; },0);
+    APP.nextAccId    = maxId(APP.accounts)+1;
+    APP.nextTxnId    = maxId(APP.transactions)+1;
+    APP.nextHeadId   = maxId(APP.cfHeads)+1;
+    APP.nextSncId    = maxId(APP.sanctions)+1;
+    APP.nextSetoffId = maxId(APP.setoffs)+1;
+    APP.nextFrmsId   = maxId(APP.frmsRequests)+1;
+    setSyncStatus('connected');
+    console.log('[DB] Data loaded from Supabase');
+  }catch(err){
+    console.error('[DB] Load error',err);
+    setSyncStatus('error');
+    toast('Database load error: '+err.message,'err');
+  }
+}
+
+// ── Real-time subscriptions ───────────────────────────────────
+function startRealtime(){
+  // Clean up existing channels
+  _rtChannels.forEach(ch=>_sb.removeChannel(ch));
+  _rtChannels=[];
+
+  const tables = [
+    {table:T.accounts,     onCh: ()=>{ APP.accounts=[];     loadTableInto(T.accounts,'accounts');    }},
+    {table:T.transactions, onCh: ()=>{ APP.transactions=[]; loadTableInto(T.transactions,'transactions',()=>{renderLedger();renderDashboard();}); }},
+    {table:T.cfHeads,      onCh: ()=>{ loadTableInto(T.cfHeads,'cfHeads',()=>renderCFHeads()); }},
+    {table:T.sanctions,    onCh: ()=>{ loadTableInto(T.sanctions,'sanctions',()=>{ if(document.getElementById('pg-sanctions').classList.contains('active')) renderSanctions(); }); }},
+    {table:T.setoffs,      onCh: ()=>{ loadTableInto(T.setoffs,'setoffs'); }},
+    {table:T.frms,         onCh: ()=>{ loadTableInto(T.frms,'frmsRequests',()=>{ if(document.getElementById('pg-frms').classList.contains('active')) frmsRender(); }); }},
+  ];
+
+  tables.forEach(({table,onCh})=>{
+    const ch = _sb.channel('rt_'+table)
+      .on('postgres_changes',{event:'*',schema:'public',table,filter:`org_id=eq.${ORG_ID}`}, payload=>{
+        console.log('[RT]',table,payload.eventType);
+        onCh();
+        updateBadges();
+        flashSyncDot();
+      })
+      .subscribe(status=>{
+        setSyncStatus(status==='SUBSCRIBED'?'connected':'connecting');
+      });
+    _rtChannels.push(ch);
+  });
+}
+
+async function loadTableInto(table, appKey, callback){
+  const rows = await dbGet(table);
+  APP[appKey]=rows;
+  if(callback) callback();
+}
+
+function flashSyncDot(){
+  const dot=document.getElementById('sync-dot');
+  if(!dot) return;
+  dot.style.transform='scale(1.6)';
+  setTimeout(()=>dot.style.transform='',400);
+}
+
+function setSyncStatus(status){
+  const dot=document.getElementById('sync-dot');
+  const lbl=document.getElementById('sync-label');
+  if(!dot) return;
+  if(status==='connected'){dot.classList.remove('disconnected');if(lbl)lbl.textContent='Live';}
+  else if(status==='loading'||status==='connecting'){dot.style.background='var(--amber)';if(lbl)lbl.textContent='Syncing…';}
+  else if(status==='error'){dot.classList.add('disconnected');if(lbl)lbl.textContent='Offline';}
+}
+
+// ══════════════════════════════════════════════════════════════
+//  AUTH FUNCTIONS
+// ══════════════════════════════════════════════════════════════
+
+async function authInit(){
+  // Check for existing session
+  const {data:{session}} = await _sb.auth.getSession();
+  if(session?.user){
+    await onAuthSuccess(session.user);
+  } else {
+    document.getElementById('auth-screen').style.display='flex';
+    document.getElementById('sync-status-auth').textContent='Ready to sign in';
+  }
+  // Listen for auth changes (login from another tab, token refresh, etc.)
+  _sb.auth.onAuthStateChange(async (event,session)=>{
+    if(event==='SIGNED_IN' && session?.user){
+      await onAuthSuccess(session.user);
+    } else if(event==='SIGNED_OUT'){
+      CURRENT_USER=null; CURRENT_ROLE=null;
+      document.getElementById('auth-screen').style.display='flex';
+    }
+  });
+}
+
+async function onAuthSuccess(user){
+  CURRENT_USER = user;
+  // Load role from cf_users table
+  const {data:uRow} = await _sb.from(T.users).select('role,full_name').eq('user_id',user.id).single();
+  CURRENT_ROLE = uRow?.role||'viewer';
+  const displayName = uRow?.full_name || user.user_metadata?.full_name || user.email.split('@')[0];
+  // Update UI
+  document.getElementById('auth-screen').style.display='none';
+  updateUserUI(displayName, user.email, CURRENT_ROLE);
+  applyRolePermissions();
+  // Load data
+  await loadData();
+  updateBadges();
+  renderDashboard();
+  startRealtime();
+  await logActivity('App','login','');
+}
+
+function updateUserUI(name, email, role){
+  const initials = name.split(' ').map(w=>w[0]||'').join('').slice(0,2).toUpperCase()||'?';
+  ['user-avatar','sidebar-user-avatar'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.textContent=initials;
+  });
+  const nameLbl=document.getElementById('user-name-label'); if(nameLbl) nameLbl.textContent=name;
+  const sName=document.getElementById('sidebar-user-name'); if(sName) sName.textContent=name;
+  const sRole=document.getElementById('sidebar-user-role'); if(sRole) sRole.textContent=role==='admin'?'Administrator':'Viewer';
+  const roleChip=document.getElementById('user-role-chip');
+  if(roleChip) roleChip.innerHTML=role==='admin'
+    ?'<span class="role-chip-admin">Admin</span>'
+    :'<span class="role-chip-viewer">Viewer</span>';
+  const mName=document.getElementById('user-menu-name'); if(mName) mName.textContent=name;
+  const mEmail=document.getElementById('user-menu-email'); if(mEmail) mEmail.textContent=email;
+}
+
+function applyRolePermissions(){
+  const isViewer = CURRENT_ROLE!=='admin';
+  // Hide all admin-only elements for viewers
+  document.querySelectorAll('.admin-only,.admin-only-nav').forEach(el=>{
+    el.style.display = isViewer ? 'none' : '';
+  });
+  // Disable write buttons for viewers
+  document.querySelectorAll('.btn-primary,.btn-success,.btn-danger,.btn-delete').forEach(btn=>{
+    const skipIds=['auth-login-btn'];
+    if(skipIds.includes(btn.id)) return;
+    if(isViewer){
+      btn.disabled=true;
+      btn.title='View-only access — contact your admin to make changes';
+    }
+  });
+}
+
+async function authLogin(){
+  const email = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value;
+  if(!email||!password){showAuthError('Please enter your email and password.');return;}
+  const btn = document.getElementById('auth-login-btn');
+  btn.disabled=true; btn.textContent='Signing in…';
+  const {error} = await _sb.auth.signInWithPassword({email,password});
+  btn.disabled=false; btn.textContent='Sign In';
+  if(error) showAuthError(error.message);
+}
+
+async function authSignOut(){
+  toggleUserMenu();
+  await logActivity('App','logout','');
+  _rtChannels.forEach(ch=>_sb.removeChannel(ch));
+  await _sb.auth.signOut();
+  toast('Signed out','ok');
+}
+
+async function authSendReset(){
+  const email = document.getElementById('auth-reset-email').value.trim();
+  if(!email){showAuthError('Enter your email address.');return;}
+  const {error} = await _sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.href});
+  if(error){showAuthError(error.message);}
+  else{showAuthError('✓ Reset email sent! Check your inbox.');document.getElementById('auth-error').style.background='var(--green-l)';document.getElementById('auth-error').style.color='var(--green)';}
+}
+
+function authShowReset(){document.getElementById('auth-login-form').style.display='none';document.getElementById('auth-reset-form').style.display='block';}
+function authShowLogin(){document.getElementById('auth-reset-form').style.display='none';document.getElementById('auth-login-form').style.display='block';}
+function showAuthError(msg){const el=document.getElementById('auth-error');el.textContent=msg;el.style.display='block';}
+
+function toggleUserMenu(){
+  const m=document.getElementById('user-menu');
+  m.style.display=m.style.display==='none'?'block':'none';
+}
+document.addEventListener('click',e=>{
+  const pill=document.getElementById('user-pill');
+  const menu=document.getElementById('user-menu');
+  if(menu&&pill&&!pill.contains(e.target)&&!menu.contains(e.target)) menu.style.display='none';
+});
+
+// ══════════════════════════════════════════════════════════════
+//  USER MANAGEMENT (Admin)
+// ══════════════════════════════════════════════════════════════
+
+async function renderUserMgmt(){
+  if(CURRENT_ROLE!=='admin'){
+    document.getElementById('usermgmt-body').innerHTML='<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text3)">Admin access required</td></tr>';
+    return;
+  }
+  const {data:users} = await _sb.from(T.users).select('*').eq('org_id',ORG_ID).order('created_at',{ascending:true});
+  if(!users?.length){
+    document.getElementById('usermgmt-body').innerHTML='<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text3)">No users found</td></tr>';
+    return;
+  }
+  document.getElementById('usermgmt-body').innerHTML = users.map(u=>{
+    const initials=(u.full_name||u.email||'?').split(' ').map(w=>w[0]||'').join('').slice(0,2).toUpperCase();
+    const isSelf = CURRENT_USER && u.user_id===CURRENT_USER.id;
+    return `<tr>
+      <td><div style="display:flex;align-items:center;gap:8px;">
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;">${initials}</div>
+        <span style="font-size:12px;font-weight:500">${u.full_name||'—'}</span>
+        ${isSelf?'<span class="chip chip-gray" style="font-size:9px">You</span>':''}
+      </div></td>
+      <td style="font-size:12px">${u.email||'—'}</td>
+      <td><select class="inp" style="padding:3px 8px;font-size:11px;width:auto" onchange="updateUserRole('${u.user_id}',this.value)" ${isSelf?'disabled':''}>
+        <option value="viewer" ${u.role==='viewer'?'selected':''}>Viewer</option>
+        <option value="admin"  ${u.role==='admin'?'selected':''}>Admin</option>
+      </select></td>
+      <td style="font-size:11px;color:var(--text3)">${u.created_at?fmtDate(u.created_at.slice(0,10)):'—'}</td>
+      <td>${!isSelf?`<button class="btn btn-sm btn-delete" onclick="removeUser('${u.user_id}','${u.full_name||u.email}')">Remove</button>`:'—'}</td>
+    </tr>`;
+  }).join('');
+
+  // Render activity log
+  const {data:log} = await _sb.from(T.audit).select('*').eq('org_id',ORG_ID).order('created_at',{ascending:false}).limit(100);
+  if(log?.length){
+    document.getElementById('activity-log-body').innerHTML=log.map(a=>`<tr>
+      <td class="mono" style="font-size:10px;white-space:nowrap">${new Date(a.created_at).toLocaleString('en-IN')}</td>
+      <td style="font-size:11px">${a.user_name||a.user_email||'?'}</td>
+      <td style="font-size:11px">${a.action||'—'}</td>
+      <td><span class="chip chip-blue" style="font-size:9px">${a.module||'—'}</span></td>
+      <td style="font-size:11px;color:var(--text3)">${a.detail||'—'}</td>
+    </tr>`).join('');
+  }
+}
+
+async function updateUserRole(userId, role){
+  await _sb.from(T.users).update({role}).eq('user_id',userId).eq('org_id',ORG_ID);
+  await logActivity('Admin','role_change',`${userId} → ${role}`);
+  toast(`Role updated to ${role}`,'ok');
+}
+
+async function removeUser(userId, name){
+  if(!confirm(`Remove ${name} from the team?\nThey will lose access immediately.`)) return;
+  await _sb.from(T.users).delete().eq('user_id',userId).eq('org_id',ORG_ID);
+  await logActivity('Admin','remove_user',name);
+  toast(`${name} removed`,'ok');
+  renderUserMgmt();
+}
+
+async function inviteUser(){
+  const email = document.getElementById('invite-email').value.trim();
+  const name  = document.getElementById('invite-name').value.trim();
+  const role  = document.getElementById('invite-role').value;
+  if(!email||!name){toast('Email and name are required','err');return;}
+  // Invite via Supabase Admin (requires service-role key — this creates the user server-side)
+  // In a pure client-side app we use signUp with a random password and the user resets it
+  const tempPwd = 'Temp_'+Math.random().toString(36).slice(2,10)+'!9';
+  const {data,error} = await _sb.auth.signUp({
+    email, password:tempPwd,
+    options:{data:{full_name:name},emailRedirectTo:window.location.href}
+  });
+  if(error){toast('Invite error: '+error.message,'err');return;}
+  // Insert into cf_users with role
+  if(data.user){
+    await _sb.from(T.users).upsert({
+      user_id:data.user.id, email, full_name:name, role, org_id:ORG_ID,
+      created_at:new Date().toISOString()
+    },{onConflict:'user_id'});
+  }
+  await logActivity('Admin','invite_user',`${name} (${role})`);
+  closeModal('modal-invite-user');
+  toast(`Invitation sent to ${email}. They'll receive a confirmation email.`,'ok');
+  renderUserMgmt();
+}
+
+// ── Patch nav() to handle usermgmt page ──────────────────────
 
 // ══════════════════════════════════════════════════════════════
 //  FUND REQUIREMENT MANAGEMENT SYSTEM (FRMS)
@@ -4914,36 +5605,37 @@ function frmsQueueSave(){
 // ══════════════════════════════════════════════════════════════
 
 // ==================== INIT ====================
-document.addEventListener('DOMContentLoaded', ()=>{
+document.addEventListener('DOMContentLoaded', async ()=>{
   document.getElementById('topbar-date').textContent = new Date().toLocaleDateString('en-IN',{weekday:'short',year:'numeric',month:'short',day:'numeric'});
-  loadData();
-  updateBadges();
-  renderDashboard();
   
   // Drag/drop on upload zone
   const zone = document.getElementById('upload-zone');
-  zone.addEventListener('dragover', e=>{e.preventDefault();zone.classList.add('drag-over');});
-  zone.addEventListener('dragleave', ()=>zone.classList.remove('drag-over'));
-  zone.addEventListener('drop', e=>{
-    e.preventDefault();zone.classList.remove('drag-over');
-    const file = e.dataTransfer.files[0];
-    if(file) handleFileUpload(file);
-  });
+  if(zone){
+    zone.addEventListener('dragover', e=>{e.preventDefault();zone.classList.add('drag-over');});
+    zone.addEventListener('dragleave', ()=>zone.classList.remove('drag-over'));
+    zone.addEventListener('drop', e=>{
+      e.preventDefault();zone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if(file) handleFileUpload(file);
+    });
+  }
   
   // CF drag/drop
   const cfZone = document.getElementById('cf-upload-zone');
-  cfZone.addEventListener('dragover', e=>{e.preventDefault();cfZone.classList.add('drag-over');});
-  cfZone.addEventListener('dragleave', ()=>cfZone.classList.remove('drag-over'));
-  cfZone.addEventListener('drop', e=>{
-    e.preventDefault();cfZone.classList.remove('drag-over');
-    const file = e.dataTransfer.files[0];
-    if(file) handleCFUpload(file);
-  });
+  if(cfZone){
+    cfZone.addEventListener('dragover', e=>{e.preventDefault();cfZone.classList.add('drag-over');});
+    cfZone.addEventListener('dragleave', ()=>cfZone.classList.remove('drag-over'));
+    cfZone.addEventListener('drop', e=>{
+      e.preventDefault();cfZone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if(file) handleCFUpload(file);
+    });
+  }
   
-  // Auto-save
-  setInterval(saveData, 60000);
+  // Start Supabase auth (handles login screen, session restore, data load)
+  await authInit();
   
-  console.log('CashFlow Ledger initialized ✓');
+  console.log('CashFlow Ledger + Supabase initialized ✓');
 });
 
 // ══════════════════════════════════════════════════════════
@@ -5459,84 +6151,36 @@ function exportSanctionsExcel(){
   toast('Sanction report exported','ok');
 }
 </script>
-<!-- ═══════════════════════════════════════════════════════ -->
-<!--  PWA — Service Worker + Install Banner                  -->
-<!-- ═══════════════════════════════════════════════════════ -->
-
-<div id="pwa-banner" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:10000;
-  background:#fff;border-top:2px solid #E8560A;padding:12px 20px;
-  align-items:center;gap:14px;box-shadow:0 -4px 20px rgba(0,0,0,.12);">
-  <div style="width:36px;height:36px;border-radius:8px;background:#E8560A;display:flex;
-    align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;flex-shrink:0;">₹</div>
-  <div style="flex:1;">
-    <div style="font-size:13px;font-weight:600;color:#1A1F36;">Install CashFlow Ledger</div>
-    <div style="font-size:11px;color:#8F96A7;">Works offline · Opens like a desktop app · No browser bar</div>
-  </div>
-  <button id="pwa-install-btn" style="padding:8px 18px;background:#E8560A;color:#fff;border:none;
-    border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">
-    ⊕ Install App
-  </button>
-  <button onclick="document.getElementById('pwa-banner').style.display='none'" style="padding:8px;
-    background:none;border:none;font-size:18px;color:#9CA3AF;cursor:pointer;line-height:1;">✕</button>
+<div id="pwa-banner" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:10000;background:#fff;border-top:2px solid #E8560A;padding:12px 20px;align-items:center;gap:14px;box-shadow:0 -4px 20px rgba(0,0,0,.12);">
+  <div style="width:36px;height:36px;border-radius:8px;background:#E8560A;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;flex-shrink:0;">₹</div>
+  <div style="flex:1;"><div style="font-size:13px;font-weight:600;color:#1A1F36;">Install CashFlow Ledger</div><div style="font-size:11px;color:#8F96A7;">Works offline · Opens like a desktop app · No browser bar</div></div>
+  <button id="pwa-install-btn" style="padding:8px 18px;background:#E8560A;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">⊕ Install App</button>
+  <button onclick="document.getElementById('pwa-banner').style.display='none'" style="padding:8px;background:none;border:none;font-size:18px;color:#9CA3AF;cursor:pointer;line-height:1;">✕</button>
 </div>
-
 <script>
-// ── Service Worker Registration ───────────────────────────
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js')
-      .then(reg => {
-        console.log('[PWA] Service Worker registered:', reg.scope);
-        setInterval(() => reg.update(), 60000);
-        reg.addEventListener('updatefound', () => {
-          const newWorker = reg.installing;
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              if (confirm('A new version of CashFlow Ledger is available. Reload to update?')) {
-                newWorker.postMessage({ type: 'SKIP_WAITING' });
-                window.location.reload();
-              }
-            }
-          });
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('./sw.js').then(reg=>{
+      console.log('[PWA] SW registered');
+      reg.addEventListener('updatefound',()=>{
+        const w=reg.installing;
+        w.addEventListener('statechange',()=>{
+          if(w.state==='installed'&&navigator.serviceWorker.controller){
+            if(confirm('New version available. Reload to update?')){w.postMessage({type:'SKIP_WAITING'});window.location.reload();}
+          }
         });
-      })
-      .catch(err => console.error('[PWA] Service Worker registration failed:', err));
+      });
+    }).catch(e=>console.error('[PWA] SW failed',e));
   });
 }
-
-// ── Install Prompt ────────────────────────────────────────
-let deferredPrompt = null;
-const banner = document.getElementById('pwa-banner');
-const installBtn = document.getElementById('pwa-install-btn');
-
-window.addEventListener('beforeinstallprompt', e => {
-  e.preventDefault();
-  deferredPrompt = e;
-  setTimeout(() => { banner.style.display = 'flex'; }, 3000);
-});
-
-installBtn.addEventListener('click', async () => {
-  if (!deferredPrompt) return;
-  deferredPrompt.prompt();
-  const { outcome } = await deferredPrompt.userChoice;
-  console.log('[PWA] Install outcome:', outcome);
-  deferredPrompt = null;
-  banner.style.display = 'none';
-  if (outcome === 'accepted') {
-    setTimeout(() => toast('✓ CashFlow Ledger installed successfully!', 'ok'), 1000);
-  }
-});
-
-window.addEventListener('appinstalled', () => {
-  banner.style.display = 'none';
-  deferredPrompt = null;
-  console.log('[PWA] App installed');
-});
-
-// ── Offline / Online indicator ────────────────────────────
-window.addEventListener('online',  () => toast('Back online', 'ok'));
-window.addEventListener('offline', () => toast('Offline — data saved locally', 'warn'));
+let deferredPrompt=null;
+const banner=document.getElementById('pwa-banner');
+const installBtn=document.getElementById('pwa-install-btn');
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;setTimeout(()=>{banner.style.display='flex';},3000);});
+if(installBtn)installBtn.addEventListener('click',async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();const{outcome}=await deferredPrompt.userChoice;deferredPrompt=null;banner.style.display='none';});
+window.addEventListener('appinstalled',()=>{banner.style.display='none';});
+window.addEventListener('online', ()=>typeof toast!=='undefined'&&toast('Back online','ok'));
+window.addEventListener('offline',()=>typeof toast!=='undefined'&&toast('You are offline','warn'));
 </script>
-
 </body>
 </html>
